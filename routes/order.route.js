@@ -4,7 +4,23 @@ import Product from "../models/product.js";
 
 const router = express.Router();
 
-//get
+const aggregateProducts = (products) => {
+  const productMap = new Map();
+
+  products.forEach((item) => {
+    const { product, quantity } = item;
+    if (productMap.has(product)) {
+      const existing = productMap.get(product);
+      existing.quantity += quantity;
+    } else {
+      productMap.set(product, { product, quantity });
+    }
+  });
+
+  return Array.from(productMap.values());
+};
+
+// Get all orders
 router.get("/", async (req, res) => {
   try {
     const orders = await Order.find().populate("products.product");
@@ -35,10 +51,29 @@ router.post("/createOrder", async (req, res) => {
     const { customerName, phoneNumber, address, codService, products } =
       req.body;
 
+    // Create a map to aggregate products
+    const aggregatedProducts = products.reduce((acc, item) => {
+      const { product, quantity } = item;
+
+      // Check if product already exists in accumulator
+      if (acc[product._id]) {
+        acc[product._id].quantity += quantity;
+      } else {
+        acc[product._id] = {
+          product: product._id,
+          quantity,
+        };
+      }
+      return acc;
+    }, {});
+
+    // Convert aggregated products to array
+    const aggregatedProductArray = Object.values(aggregatedProducts);
+
     let total = 0;
 
     // Validate that all products exist and calculate the total price
-    for (const item of products) {
+    for (const item of aggregatedProductArray) {
       const product = await Product.findById(item.product);
       if (!product) {
         return res.status(404).json({ message: "Product not found" });
@@ -57,13 +92,13 @@ router.post("/createOrder", async (req, res) => {
       phoneNumber,
       address,
       codService,
-      products,
+      products: aggregatedProductArray,
       total,
     });
     await order.save();
 
     // Decrease the product quantities
-    for (const item of products) {
+    for (const item of aggregatedProductArray) {
       await Product.findByIdAndUpdate(item.product, {
         $inc: { quantity: -item.quantity },
       });
@@ -99,6 +134,7 @@ router.delete("/deleteOrder/:id", async (req, res) => {
   }
 });
 
+// Update an order by ID
 router.put("/updateOrder/:id", async (req, res) => {
   try {
     const { customerName, phoneNumber, address, codService, products } =
@@ -117,10 +153,29 @@ router.put("/updateOrder/:id", async (req, res) => {
       });
     }
 
+    // Create a map to aggregate products
+    const aggregatedProducts = products.reduce((acc, item) => {
+      const { product, quantity } = item;
+
+      // Check if product already exists in accumulator
+      if (acc[product._id]) {
+        acc[product._id].quantity += quantity;
+      } else {
+        acc[product._id] = {
+          product: product._id,
+          quantity,
+        };
+      }
+      return acc;
+    }, {});
+
+    // Convert aggregated products to array
+    const aggregatedProductArray = Object.values(aggregatedProducts);
+
     let total = 0;
 
     // Validate that new products exist and calculate the total price
-    for (const item of products) {
+    for (const item of aggregatedProductArray) {
       const product = await Product.findById(item.product);
       if (!product) {
         return res.status(404).json({ message: "Product not found" });
@@ -138,14 +193,14 @@ router.put("/updateOrder/:id", async (req, res) => {
     order.phoneNumber = phoneNumber;
     order.address = address;
     order.codService = codService;
-    order.products = products;
+    order.products = aggregatedProductArray;
     order.total = total;
 
     // Save the updated order
     await order.save();
 
     // Adjust the product quantities based on the updated order
-    for (const item of products) {
+    for (const item of aggregatedProductArray) {
       await Product.findByIdAndUpdate(item.product, {
         $inc: { quantity: -item.quantity },
       });
