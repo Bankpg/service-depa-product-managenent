@@ -51,29 +51,10 @@ router.post("/createOrder", async (req, res) => {
     const { customerName, phoneNumber, address, codService, products } =
       req.body;
 
-    // Create a map to aggregate products
-    const aggregatedProducts = products.reduce((acc, item) => {
-      const { product, quantity } = item;
-
-      // Check if product already exists in accumulator
-      if (acc[product._id]) {
-        acc[product._id].quantity += quantity;
-      } else {
-        acc[product._id] = {
-          product: product._id,
-          quantity,
-        };
-      }
-      return acc;
-    }, {});
-
-    // Convert aggregated products to array
-    const aggregatedProductArray = Object.values(aggregatedProducts);
-
     let total = 0;
 
     // Validate that all products exist and calculate the total price
-    for (const item of aggregatedProductArray) {
+    for (const item of products) {
       const product = await Product.findById(item.product);
       if (!product) {
         return res.status(404).json({ message: "Product not found" });
@@ -92,13 +73,13 @@ router.post("/createOrder", async (req, res) => {
       phoneNumber,
       address,
       codService,
-      products: aggregatedProductArray,
+      products,
       total,
     });
     await order.save();
 
     // Decrease the product quantities
-    for (const item of aggregatedProductArray) {
+    for (const item of products) {
       await Product.findByIdAndUpdate(item.product, {
         $inc: { quantity: -item.quantity },
       });
